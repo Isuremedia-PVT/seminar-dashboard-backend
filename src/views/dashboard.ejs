@@ -1,0 +1,1556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Seminar Performance Dashboard</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] }
+        }
+      }
+    }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <style>
+    body { font-family: 'Inter', system-ui, sans-serif; }
+    .spin { animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    th.sortable { cursor: pointer; user-select: none; }
+    th.sortable:hover { color: #60a5fa; }
+    th.sort-asc::after  { content: ' ↑'; color: #60a5fa; }
+    th.sort-desc::after { content: ' ↓'; color: #60a5fa; }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen">
+
+  <!-- Header -->
+  <header class="bg-slate-800/80 backdrop-blur border-b border-slate-700 sticky top-0 z-10">
+    <div class="max-w-screen-2xl mx-auto px-6 py-3 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center shrink-0">
+          <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5"
+              d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+          </svg>
+        </div>
+        <div>
+          <p class="text-sm font-semibold text-white leading-none">Seminar Dashboard</p>
+          <p class="text-xs text-slate-400 mt-0.5">Dinner Seminar Performance</p>
+        </div>
+      </div>
+      <nav class="flex items-center gap-1 bg-slate-900/60 rounded-lg p-1">
+        <button id="tab-btn-dashboard" onclick="switchTab('dashboard')"
+          class="text-xs font-semibold px-3.5 py-1.5 rounded-md bg-slate-700 text-white transition-colors">
+          Dashboard
+        </button>
+        <% if (isLoggedIn) { %>
+        <button id="tab-btn-webhook" onclick="switchTab('webhook')"
+          class="text-xs font-semibold px-3.5 py-1.5 rounded-md text-slate-400 hover:text-white transition-colors">
+          Webhook
+        </button>
+        <button id="tab-btn-seminars" onclick="switchTab('seminars')"
+          class="text-xs font-semibold px-3.5 py-1.5 rounded-md text-slate-400 hover:text-white transition-colors">
+          Seminars
+        </button>
+        <% } %>
+      </nav>
+
+      <div class="flex items-center gap-3">
+        <div id="loader" class="hidden">
+          <svg class="spin w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/>
+          </svg>
+        </div>
+        <span class="text-xs text-slate-500" id="last-updated">Not loaded</span>
+        <% if (isLoggedIn) { %>
+        <form method="POST" action="/auth/logout" class="inline">
+          <button type="submit" class="text-xs text-slate-400 hover:text-red-400 hover:bg-slate-700 px-2.5 py-1.5 rounded-lg transition-colors">Sign Out</button>
+        </form>
+        <% } else { %>
+        <a href="/login" class="text-xs text-slate-400 hover:text-blue-400 hover:bg-slate-700 px-2.5 py-1.5 rounded-lg transition-colors">Sign In</a>
+        <% } %>
+      </div>
+    </div>
+  </header>
+
+  <div id="page-dashboard">
+  <main class="max-w-screen-2xl mx-auto px-6 py-6 space-y-5">
+
+    <!-- Filters -->
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-4 flex flex-wrap gap-3 items-end">
+      <div class="flex flex-col gap-1.5">
+        <label class="text-xs font-medium text-slate-400 uppercase tracking-widest">From</label>
+        <input type="date" id="date-from"
+          class="bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+      </div>
+      <div class="flex flex-col gap-1.5">
+        <label class="text-xs font-medium text-slate-400 uppercase tracking-widest">To</label>
+        <input type="date" id="date-to"
+          class="bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+      </div>
+      <div class="flex flex-col gap-1.5">
+        <label class="text-xs font-medium text-slate-400 uppercase tracking-widest">Seminar</label>
+        <select id="seminar-filter"
+          class="bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent min-w-[220px]">
+          <option value="">All Seminars</option>
+        </select>
+      </div>
+      <button id="apply-btn" onclick="loadDashboard()"
+        class="bg-blue-600 hover:bg-blue-500 active:scale-95 text-white font-semibold px-5 py-2 rounded-lg text-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-slate-800">
+        Apply
+      </button>
+      <div class="ml-auto flex items-center gap-1">
+        <span class="text-xs text-slate-500 mr-1">Quick:</span>
+        <button onclick="setThisWeek();loadDashboard()" class="text-xs text-slate-400 hover:text-blue-400 hover:bg-slate-700 px-2.5 py-1.5 rounded-lg transition-colors">This Week</button>
+        <button onclick="setThisMonth();loadDashboard()" class="text-xs text-slate-400 hover:text-blue-400 hover:bg-slate-700 px-2.5 py-1.5 rounded-lg transition-colors">This Month</button>
+        <button onclick="setRange(30);loadDashboard()" class="text-xs text-slate-400 hover:text-blue-400 hover:bg-slate-700 px-2.5 py-1.5 rounded-lg transition-colors">30d</button>
+        <button onclick="setRange(60);loadDashboard()" class="text-xs text-slate-400 hover:text-blue-400 hover:bg-slate-700 px-2.5 py-1.5 rounded-lg transition-colors">60d</button>
+        <button onclick="setRange(90);loadDashboard()" class="text-xs text-slate-400 hover:text-blue-400 hover:bg-slate-700 px-2.5 py-1.5 rounded-lg transition-colors">90d</button>
+        <button onclick="setRange(365);loadDashboard()" class="text-xs text-slate-400 hover:text-blue-400 hover:bg-slate-700 px-2.5 py-1.5 rounded-lg transition-colors">1yr</button>
+      </div>
+    </div>
+
+    <!-- Funnel KPI Cards -->
+    <div>
+      <p class="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3 px-1">Funnel Volume</p>
+      <div class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
+
+        <div class="bg-slate-800 border border-slate-700 rounded-xl p-4 flex flex-col gap-2">
+          <div class="flex items-center justify-between">
+            <p class="text-xs font-semibold text-slate-400 uppercase tracking-widest">Leads</p>
+            <div class="w-7 h-7 rounded-lg bg-blue-500/20 flex items-center justify-center">
+              <svg class="w-3.5 h-3.5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0"/>
+              </svg>
+            </div>
+          </div>
+          <p class="text-2xl font-bold text-white tracking-tight" id="kpi-leads">—</p>
+          <p class="text-xs text-slate-500" id="kpi-cpl-sub">CPL: —</p>
+        </div>
+
+        <div class="bg-slate-800 border border-slate-700 rounded-xl p-4 flex flex-col gap-2">
+          <div class="flex items-center justify-between">
+            <p class="text-xs font-semibold text-slate-400 uppercase tracking-widest">Ad Spend</p>
+            <div class="w-7 h-7 rounded-lg bg-slate-700 flex items-center justify-center">
+              <svg class="w-3.5 h-3.5 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+            </div>
+          </div>
+          <p class="text-2xl font-bold text-white tracking-tight" id="kpi-spend">—</p>
+          <p class="text-xs text-slate-500">Total period spend</p>
+        </div>
+
+        <div class="bg-slate-800 border border-slate-700 rounded-xl p-4 flex flex-col gap-2">
+          <div class="flex items-center justify-between">
+            <p class="text-xs font-semibold text-slate-400 uppercase tracking-widest">Registered</p>
+            <div class="w-7 h-7 rounded-lg bg-blue-500/20 flex items-center justify-center">
+              <svg class="w-3.5 h-3.5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+              </svg>
+            </div>
+          </div>
+          <p class="text-2xl font-bold text-white tracking-tight" id="kpi-registered">—</p>
+          <p class="text-xs text-slate-500" id="kpi-lead-reg-sub">Lead→Reg: —</p>
+        </div>
+
+        <div class="bg-slate-800 border border-slate-700 rounded-xl p-4 flex flex-col gap-2">
+          <div class="flex items-center justify-between">
+            <p class="text-xs font-semibold text-slate-400 uppercase tracking-widest">Attended Seminar</p>
+            <div class="w-7 h-7 rounded-lg bg-indigo-500/20 flex items-center justify-center">
+              <svg class="w-3.5 h-3.5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+              </svg>
+            </div>
+          </div>
+          <p class="text-2xl font-bold text-white tracking-tight" id="kpi-attended">—</p>
+          <p class="text-xs text-slate-500" id="kpi-attend-rate-sub">Reg→Attend: —</p>
+        </div>
+
+        <div class="bg-slate-800 border border-slate-700 rounded-xl p-4 flex flex-col gap-2">
+          <div class="flex items-center justify-between">
+            <p class="text-xs font-semibold text-slate-400 uppercase tracking-widest">Consult Booked</p>
+            <div class="w-7 h-7 rounded-lg bg-violet-500/20 flex items-center justify-center">
+              <svg class="w-3.5 h-3.5 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+              </svg>
+            </div>
+          </div>
+          <p class="text-2xl font-bold text-white tracking-tight" id="kpi-consult-booked">—</p>
+          <p class="text-xs text-slate-500" id="kpi-consult-booked-sub">Attend→Consult: —</p>
+        </div>
+
+        <div class="bg-slate-800 border border-slate-700 rounded-xl p-4 flex flex-col gap-2">
+          <div class="flex items-center justify-between">
+            <p class="text-xs font-semibold text-slate-400 uppercase tracking-widest">Consult Completed</p>
+            <div class="w-7 h-7 rounded-lg bg-pink-500/20 flex items-center justify-center">
+              <svg class="w-3.5 h-3.5 text-pink-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4M7 21l5-5 5 5M3 10l9-9 9 9"/>
+              </svg>
+            </div>
+          </div>
+          <p class="text-2xl font-bold text-white tracking-tight" id="kpi-consult-completed">—</p>
+          <p class="text-xs text-slate-500" id="kpi-consult-completed-sub">Booked→Done: —</p>
+        </div>
+
+        <div class="bg-gradient-to-br from-emerald-900/40 to-emerald-800/20 border border-emerald-700/50 rounded-xl p-4 flex flex-col gap-2">
+          <div class="flex items-center justify-between">
+            <p class="text-xs font-semibold text-emerald-400 uppercase tracking-widest">Closed / Won</p>
+            <div class="w-7 h-7 rounded-lg bg-emerald-500/20 flex items-center justify-center">
+              <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+            </div>
+          </div>
+          <p class="text-2xl font-bold text-emerald-300 tracking-tight" id="kpi-sales">—</p>
+          <p class="text-xs text-emerald-500" id="kpi-close-rate-sub">Close Rate: —</p>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Cost Efficiency Row -->
+    <div>
+      <p class="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3 px-1">Cost Efficiency</p>
+      <div class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
+        <div class="bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 flex items-center justify-between">
+          <span class="text-xs text-slate-400 font-medium">Cost / Lead</span>
+          <span class="text-base font-bold text-white" id="m-cpl">—</span>
+        </div>
+        <div class="bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 flex items-center justify-between">
+          <span class="text-xs text-slate-400 font-medium">Cost / Reg</span>
+          <span class="text-base font-bold text-white" id="m-cpr">—</span>
+        </div>
+        <div class="bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 flex items-center justify-between">
+          <span class="text-xs text-slate-400 font-medium">Cost / Attendee</span>
+          <span class="text-base font-bold text-white" id="m-cpa">—</span>
+        </div>
+        <div class="bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 flex items-center justify-between">
+          <span class="text-xs text-slate-400 font-medium">Cost / Consult Booked</span>
+          <span class="text-base font-bold text-white" id="m-cpcb">—</span>
+        </div>
+        <div class="bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 flex items-center justify-between">
+          <span class="text-xs text-slate-400 font-medium">Cost / Consult Completed</span>
+          <span class="text-base font-bold text-white" id="m-cpcc">—</span>
+        </div>
+        <div class="bg-gradient-to-br from-emerald-900/40 to-emerald-800/20 border border-emerald-700/50 rounded-xl px-4 py-3 flex items-center justify-between">
+          <span class="text-xs text-emerald-400 font-medium">Cost / Sale</span>
+          <span class="text-base font-bold text-emerald-300" id="m-cps">—</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Funnel Chart -->
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-6">
+      <p class="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-4">Funnel Overview</p>
+      <div style="height:200px; position:relative;">
+        <canvas id="funnel-chart"></canvas>
+      </div>
+    </div>
+
+    <!-- Per-Seminar Table -->
+    <div class="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden">
+      <div class="px-6 py-4 border-b border-slate-700 flex items-center justify-between">
+        <p class="text-xs font-semibold text-slate-500 uppercase tracking-widest">Seminars Breakdown</p>
+        <span class="text-xs text-slate-500 bg-slate-700 px-2 py-0.5 rounded-full" id="table-count">0 seminars</span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm whitespace-nowrap">
+          <thead>
+            <tr class="border-b border-slate-700">
+              <th class="text-left px-5 py-3 text-xs font-semibold text-slate-400 uppercase tracking-widest sortable" data-col="name">Seminar</th>
+              <th class="text-right px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-widest sortable" data-col="total_spend">Spend</th>
+              <th class="text-right px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-widest sortable" data-col="registered">Reg</th>
+              <th class="text-right px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-widest sortable" data-col="attended">Attend</th>
+              <th class="text-right px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-widest sortable" data-col="consult_booked">Consult Booked</th>
+              <th class="text-right px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-widest sortable" data-col="consult_completed">Consult Done</th>
+              <th class="text-right px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-widest sortable" data-col="closed_won">Closed / Won</th>
+              <th class="text-right px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-widest sortable" data-col="cost_per_attendee">$/Attend</th>
+              <th class="text-right px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-widest sortable" data-col="close_rate_pct">Close%</th>
+              <th class="text-right px-5 py-3 text-xs font-semibold text-slate-400 uppercase tracking-widest sortable" data-col="cost_per_sale">$/Sale</th>
+            </tr>
+          </thead>
+          <tbody id="seminar-table-body">
+            <tr>
+              <td colspan="10" class="text-center px-5 py-10 text-slate-500 text-sm">
+                Apply filters to load data
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- All Leads -->
+    <div class="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden">
+      <div class="px-6 py-4 border-b border-slate-700 flex items-center justify-between">
+        <p class="text-xs font-semibold text-slate-500 uppercase tracking-widest">All Leads</p>
+        <span id="leads-count-badge" class="text-xs text-slate-500"></span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm whitespace-nowrap">
+          <thead>
+            <tr class="border-b border-slate-700">
+              <th class="text-left px-5 py-3 text-xs font-semibold text-slate-400 uppercase tracking-widest">Name</th>
+              <th class="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-widest">Email</th>
+              <th class="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-widest">Phone</th>
+              <th class="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-widest">Stage</th>
+              <th class="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-widest">Seminar</th>
+              <th class="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-widest">Received</th>
+            </tr>
+          </thead>
+          <tbody id="leads-table-body">
+            <tr><td colspan="6" class="text-center py-10 text-slate-500">Apply filters to load data</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+  </div><!-- /page-dashboard -->
+
+  <!-- Webhook Tab -->
+  <div id="page-webhook" class="hidden">
+  <main class="max-w-screen-2xl mx-auto px-6 py-6 space-y-5">
+
+    <!-- Setup Card -->
+    <div class="bg-slate-800 border border-slate-700 rounded-xl p-6 space-y-6">
+      <p class="text-xs font-semibold text-slate-500 uppercase tracking-widest">GHL Webhook Setup</p>
+
+      <div class="grid md:grid-cols-2 gap-5">
+
+        <!-- URL -->
+        <div>
+          <p class="text-xs text-slate-400 font-medium mb-2">Webhook URL</p>
+          <div class="flex items-center gap-2 bg-slate-900 border border-slate-700 rounded-lg px-4 py-3">
+            <code class="text-sm text-blue-300 flex-1 break-all" id="webhook-url">—</code>
+            <button id="copy-url-btn" onclick="copyWebhookUrl()"
+              class="shrink-0 text-xs bg-slate-700 hover:bg-slate-600 active:scale-95 text-white px-3 py-1.5 rounded-lg transition-all">
+              Copy
+            </button>
+          </div>
+          <p class="text-xs text-slate-500 mt-2">Paste this as the webhook endpoint in your GHL workflow.</p>
+        </div>
+
+        <!-- Auth Header -->
+        <div>
+          <p class="text-xs text-slate-400 font-medium mb-2">Required Header</p>
+          <div class="bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 space-y-2.5">
+            <div class="flex items-center gap-2 flex-wrap">
+              <code class="text-xs text-slate-200 bg-slate-800 px-2 py-1 rounded">x-webhook-secret</code>
+              <span class="text-slate-600">→</span>
+              <code class="text-xs text-slate-200 bg-slate-800 px-2 py-1 rounded">your GHL_WEBHOOK_SECRET value</code>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-xs text-slate-400">Secret status:</span>
+              <span id="secret-status" class="text-xs font-semibold text-slate-500">Checking…</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Steps -->
+      <div class="border-t border-slate-700 pt-5">
+        <p class="text-xs text-slate-400 font-semibold mb-3 uppercase tracking-widest">GHL Configuration Steps</p>
+        <ol class="space-y-2.5">
+          <li class="flex gap-3 text-sm text-slate-400">
+            <span class="text-blue-400 font-bold shrink-0 w-4">1.</span>
+            In GHL → open your seminar's pipeline workflow → Trigger:
+            <code class="text-xs text-slate-200 bg-slate-900 px-1.5 py-0.5 rounded ml-1">Opportunity Stage Changed</code>
+          </li>
+          <li class="flex gap-3 text-sm text-slate-400">
+            <span class="text-blue-400 font-bold shrink-0 w-4">2.</span>
+            Add action: <code class="text-xs text-slate-200 bg-slate-900 px-1.5 py-0.5 rounded mx-1">Webhook</code> → Method: POST → URL: <em>(copy above)</em>
+          </li>
+          <li class="flex gap-3 text-sm text-slate-400">
+            <span class="text-blue-400 font-bold shrink-0 w-4">3.</span>
+            Add custom header <code class="text-xs text-slate-200 bg-slate-900 px-1.5 py-0.5 rounded mx-1">x-webhook-secret</code> with your <code class="text-xs text-slate-200 bg-slate-900 px-1.5 py-0.5 rounded">.env</code> value.
+          </li>
+          <li class="flex gap-3 text-sm text-slate-400">
+            <span class="text-blue-400 font-bold shrink-0 w-4">4.</span>
+            Map payload fields:
+            <code class="text-xs text-slate-200 bg-slate-900 px-1.5 py-0.5 rounded ml-1">contact_id, opportunity_id, pipeline_name, stage_name, event_timestamp, name, email, phone</code>
+          </li>
+          <li class="flex gap-3 text-sm text-slate-400">
+            <span class="text-blue-400 font-bold shrink-0 w-4">5.</span>
+            Register the seminar via <code class="text-xs text-slate-200 bg-slate-900 px-1.5 py-0.5 rounded mx-1">POST /api/seminars</code> with the pipeline ID <em>before</em> events fire.
+          </li>
+        </ol>
+      </div>
+    </div>
+
+    <!-- Events Log -->
+    <div class="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden">
+      <div class="px-6 py-4 border-b border-slate-700 flex items-center justify-between">
+        <p class="text-xs font-semibold text-slate-500 uppercase tracking-widest">Recent Webhook Events</p>
+        <button onclick="loadWebhookEvents()"
+          class="text-xs text-slate-400 hover:text-blue-400 hover:bg-slate-700 px-2.5 py-1.5 rounded-lg transition-colors">
+          ↻ Refresh
+        </button>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm whitespace-nowrap">
+          <thead>
+            <tr class="border-b border-slate-700">
+              <th class="text-left px-5 py-3 text-xs font-semibold text-slate-400 uppercase tracking-widest">Status</th>
+              <th class="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-widest">Received</th>
+              <th class="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-widest">Contact / Pipeline</th>
+              <th class="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-widest">Seminar</th>
+              <th class="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-widest">Stage</th>
+              <th class="text-left px-5 py-3 text-xs font-semibold text-slate-400 uppercase tracking-widest">GHL Event Time</th>
+            </tr>
+          </thead>
+          <tbody id="webhook-events-body">
+            <tr><td colspan="6" class="text-center py-10 text-slate-500">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+  </div><!-- /page-webhook -->
+
+  <!-- Seminars Tab -->
+  <div id="page-seminars" class="hidden">
+  <main class="max-w-screen-2xl mx-auto px-6 py-6 space-y-5">
+
+    <!-- Registered Seminars List -->
+    <div class="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden">
+      <div class="px-6 py-4 border-b border-slate-700 flex items-center justify-between">
+        <p class="text-xs font-semibold text-slate-500 uppercase tracking-widest">Registered Seminars</p>
+        <button onclick="loadSeminarsList()" class="text-xs text-slate-400 hover:text-blue-400 hover:bg-slate-700 px-2.5 py-1.5 rounded-lg transition-colors">↻ Refresh</button>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm whitespace-nowrap">
+          <thead>
+            <tr class="border-b border-slate-700">
+              <th class="text-left px-5 py-3 text-xs font-semibold text-slate-400 uppercase tracking-widest">Name</th>
+              <th class="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-widest">Event Date</th>
+              <th class="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-widest">Location</th>
+              <th class="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-widest">Meta Campaign</th>
+              <th class="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-widest">Total Spent</th>
+              <th class="text-center px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-widest">Active</th>
+              <th class="px-5 py-3"></th>
+            </tr>
+          </thead>
+          <tbody id="seminars-list-body">
+            <tr><td colspan="7" class="text-center py-8 text-slate-500">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Edit Seminar Panel -->
+    <div id="edit-panel" class="hidden bg-slate-800 border border-blue-600/50 rounded-xl p-6 space-y-5">
+      <div class="flex items-center justify-between">
+        <p class="text-sm font-semibold text-white">Edit Seminar</p>
+        <button onclick="closeEditPanel()" type="button" class="text-slate-400 hover:text-white transition-colors text-lg leading-none">✕</button>
+      </div>
+
+      <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="flex flex-col gap-1.5">
+          <label class="text-xs text-slate-400 font-medium uppercase tracking-widest">Seminar Name <span class="text-red-400">*</span></label>
+          <input id="edit-name" type="text"
+            class="bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+        <div class="flex flex-col gap-1.5">
+          <label class="text-xs text-slate-400 font-medium uppercase tracking-widest">Event Date</label>
+          <input id="edit-date" type="date"
+            class="bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+        <div class="flex flex-col gap-1.5">
+          <label class="text-xs text-slate-400 font-medium uppercase tracking-widest">Location</label>
+          <input id="edit-location" type="text"
+            class="bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+        <div class="flex flex-col gap-1.5">
+          <label class="text-xs text-slate-400 font-medium uppercase tracking-widest">Meta Campaign</label>
+          <div class="relative" id="edit-campaign-wrapper">
+            <button id="edit-campaign-trigger" onclick="editToggleCampaignDropdown()" type="button"
+              class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2 text-sm text-left focus:outline-none focus:ring-2 focus:ring-blue-500 flex items-center justify-between gap-2 hover:border-slate-500 transition-colors">
+              <span id="edit-campaign-label" class="truncate text-slate-400">— none —</span>
+              <svg id="edit-campaign-chevron" class="w-4 h-4 text-slate-500 shrink-0 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+              </svg>
+            </button>
+            <div id="edit-campaign-panel" class="hidden absolute z-50 left-0 right-0 mt-1 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl overflow-hidden">
+              <div class="p-2 border-b border-slate-700/80">
+                <input id="edit-campaign-search" type="text" placeholder="Search campaigns…" oninput="editFilterCampaigns(this.value)"
+                  class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500">
+              </div>
+              <div id="edit-campaign-list" class="overflow-y-auto max-h-56 py-1"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Stage remapping -->
+      <div class="border-t border-slate-700/60 pt-4 space-y-3">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-xs text-slate-500 font-medium uppercase tracking-widest">GHL Pipeline</p>
+            <p class="text-xs font-mono text-slate-300 mt-0.5" id="edit-pipeline-display">—</p>
+          </div>
+          <button onclick="editFetchStages()" id="edit-fetch-stages-btn" type="button"
+            class="text-xs bg-slate-700 hover:bg-slate-600 active:scale-95 text-white px-3 py-1.5 rounded-lg transition-all">
+            Re-map Stages →
+          </button>
+        </div>
+        <div id="edit-stage-section" class="hidden space-y-3">
+          <p class="text-xs text-slate-500">Pre-filled from current mapping. Use <span class="text-blue-400 font-medium">Custom…</span> to enter a non-standard role name.</p>
+          <div id="edit-stage-dropdowns"></div>
+        </div>
+      </div>
+
+      <div id="edit-result" class="hidden"></div>
+
+      <div class="flex items-center gap-3 pt-1">
+        <button id="edit-save-btn" onclick="saveEditedSeminar()"
+          class="bg-blue-600 hover:bg-blue-500 active:scale-95 text-white font-semibold px-5 py-2 rounded-lg text-sm transition-all">
+          Save Changes
+        </button>
+        <button onclick="closeEditPanel()" type="button"
+          class="text-slate-400 hover:text-white text-sm px-4 py-2 rounded-lg hover:bg-slate-700 transition-colors">
+          Cancel
+        </button>
+      </div>
+    </div>
+
+    <!-- Register New Seminar -->
+    <div class="bg-slate-800 border border-slate-700 rounded-xl">
+      <div class="px-6 py-4 border-b border-slate-700 flex items-center justify-between">
+        <p class="text-xs font-semibold text-slate-500 uppercase tracking-widest">Register New Seminar</p>
+        <button id="reg-reset-btn" onclick="resetRegistrationFlow()" type="button"
+          class="hidden text-xs text-amber-400 hover:text-amber-300 transition-colors flex items-center gap-1.5">
+          ↩ Change pipeline / campaign
+        </button>
+      </div>
+
+      <div class="p-6 space-y-5">
+
+        <!-- Step selectors -->
+        <div class="grid sm:grid-cols-2 gap-4">
+
+          <!-- Step 1: Pipeline -->
+          <div class="flex flex-col gap-1.5">
+            <div class="flex items-center gap-2 mb-0.5">
+              <span class="w-5 h-5 rounded-full bg-blue-600 text-white text-[10px] font-bold flex items-center justify-center shrink-0">1</span>
+              <label class="text-xs text-slate-400 font-medium uppercase tracking-widest">GHL Pipeline <span class="text-red-400">*</span></label>
+            </div>
+            <div class="relative" id="pipeline-dropdown-wrapper">
+              <button id="pipeline-trigger" onclick="togglePipelineDropdown()" type="button"
+                class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2.5 text-sm text-left focus:outline-none focus:ring-2 focus:ring-blue-500 flex items-center justify-between gap-2 transition-colors hover:border-slate-500">
+                <span id="pipeline-trigger-label" class="truncate text-slate-400">Loading pipelines…</span>
+                <svg id="pipeline-chevron" class="w-4 h-4 text-slate-500 shrink-0 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                </svg>
+              </button>
+              <div id="pipeline-dropdown-panel" class="hidden absolute z-50 left-0 right-0 mt-1 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl overflow-hidden">
+                <div class="p-2 border-b border-slate-700/80">
+                  <input id="pipeline-search" type="text" placeholder="Search pipelines…" oninput="filterPipelines(this.value)"
+                    class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div id="pipeline-list" class="overflow-y-auto max-h-64 py-1">
+                  <p class="text-center text-slate-500 text-xs py-4">Loading…</p>
+                </div>
+              </div>
+            </div>
+            <p id="pipeline-status" class="text-xs text-slate-600 min-h-[1rem]"></p>
+          </div>
+
+          <!-- Step 2: Campaign -->
+          <div class="flex flex-col gap-1.5">
+            <div class="flex items-center justify-between mb-0.5">
+              <div class="flex items-center gap-2">
+                <span class="w-5 h-5 rounded-full bg-slate-600 text-white text-[10px] font-bold flex items-center justify-center shrink-0">2</span>
+                <label class="text-xs text-slate-400 font-medium uppercase tracking-widest">Meta Campaign</label>
+              </div>
+              <button onclick="loadMetaCampaigns()" type="button" class="text-xs text-slate-500 hover:text-blue-400 transition-colors">↻ Refresh</button>
+            </div>
+            <div class="relative" id="campaign-dropdown-wrapper">
+              <button id="campaign-trigger" onclick="toggleCampaignDropdown()" type="button"
+                class="w-full bg-slate-700 border border-slate-600 rounded-lg px-3 py-2.5 text-sm text-left focus:outline-none focus:ring-2 focus:ring-blue-500 flex items-center justify-between gap-2 transition-colors hover:border-slate-500">
+                <span id="campaign-trigger-label" class="truncate text-slate-400">— no campaign (optional) —</span>
+                <svg id="campaign-chevron" class="w-4 h-4 text-slate-500 shrink-0 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                </svg>
+              </button>
+              <div id="campaign-dropdown-panel" class="hidden absolute z-50 left-0 right-0 mt-1 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl overflow-hidden">
+                <div class="p-2 border-b border-slate-700/80">
+                  <input id="campaign-search" type="text" placeholder="Search campaigns…" oninput="filterCampaigns(this.value)"
+                    class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div id="campaign-list" class="overflow-y-auto max-h-64 py-1">
+                  <p class="text-center text-slate-500 text-xs py-4">Loading…</p>
+                </div>
+              </div>
+            </div>
+            <p id="campaign-status" class="text-xs text-slate-500 min-h-[1rem]"></p>
+          </div>
+        </div>
+
+        <!-- Step 3: Fetch stages -->
+        <button id="fetch-stages-btn" onclick="fetchGHLStages()"
+          class="bg-slate-700 hover:bg-slate-600 active:scale-95 text-white font-semibold px-5 py-2 rounded-lg text-sm transition-all focus:outline-none focus:ring-2 focus:ring-slate-500">
+          Fetch &amp; Map Stages →
+        </button>
+
+        <!-- Stage mapping (hidden until fetched) -->
+        <div id="stage-mapping" class="hidden border-t border-slate-700 pt-5 space-y-4">
+          <div>
+            <p class="text-sm font-semibold text-white mb-0.5">Map GHL Stages to Funnel Roles</p>
+            <p class="text-xs text-slate-500">Assign a funnel role to each stage, or leave as <span class="text-slate-400 font-medium">ignore</span>. Use <span class="text-blue-400 font-medium">Custom…</span> for non-standard roles.</p>
+          </div>
+          <div id="stage-dropdowns"></div>
+          <button id="register-btn" onclick="registerSeminar()"
+            class="bg-blue-600 hover:bg-blue-500 active:scale-95 text-white font-semibold px-6 py-2.5 rounded-lg text-sm transition-all focus:outline-none focus:ring-2 focus:ring-blue-500">
+            Register Seminar
+          </button>
+        </div>
+
+        <div id="register-result" class="hidden"></div>
+      </div>
+    </div>
+
+  </main>
+  </div><!-- /page-seminars -->
+
+  <script>
+    const g = id => document.getElementById(id);
+    const fmt = {
+      currency: v => v == null ? '—' : '$' + Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+      pct:      v => v == null ? '—' : Number(v).toFixed(1) + '%',
+      int:      v => v == null ? '—' : Math.round(Number(v)).toLocaleString(),
+    };
+
+    function setRange(days) {
+      const to = new Date(), from = new Date();
+      from.setDate(from.getDate() - days);
+      g('date-to').value   = to.toISOString().slice(0, 10);
+      g('date-from').value = from.toISOString().slice(0, 10);
+    }
+    function setThisWeek() {
+      const to = new Date(), from = new Date();
+      from.setDate(from.getDate() - from.getDay() + (from.getDay() === 0 ? -6 : 1));
+      g('date-to').value   = to.toISOString().slice(0, 10);
+      g('date-from').value = from.toISOString().slice(0, 10);
+    }
+    function setThisMonth() {
+      const to = new Date(), from = new Date(to.getFullYear(), to.getMonth(), 1);
+      g('date-to').value   = to.toISOString().slice(0, 10);
+      g('date-from').value = from.toISOString().slice(0, 10);
+    }
+    setRange(30);
+    loadDashboard();
+
+    fetch('/api/seminars').then(r => r.json()).then(list => {
+      const sel = g('seminar-filter');
+      list.forEach(s => {
+        const o = document.createElement('option');
+        o.value = s.seminar_id;
+        o.textContent = s.name + (s.event_date ? '  (' + s.event_date.slice(0, 10) + ')' : '');
+        sel.appendChild(o);
+      });
+    }).catch(() => {});
+
+    let funnelChart = null;
+
+    async function loadDashboard() {
+      const from = g('date-from').value, to = g('date-to').value;
+      const seminar = g('seminar-filter').value;
+      if (!from || !to) { alert('Please select a date range.'); return; }
+
+      const btn = g('apply-btn');
+      btn.textContent = 'Loading…';
+      btn.disabled = true;
+      g('loader').classList.remove('hidden');
+
+      const sumParams   = 'date_from=' + from + '&date_to=' + to + (seminar ? '&seminar_id=' + seminar : '');
+      const tableParams = 'date_from=' + from + '&date_to=' + to;
+      const leadsParams = seminar ? 'seminar_id=' + seminar : '';
+
+      try {
+        const [summary, table] = await Promise.all([
+          fetch('/api/dashboard/summary?' + sumParams).then(r => { if (!r.ok) throw r; return r.json(); }),
+          fetch('/api/dashboard/table?'   + tableParams).then(r => { if (!r.ok) throw r; return r.json(); }),
+        ]);
+        renderSummary(summary);
+        renderTable(table);
+        g('last-updated').textContent = 'Updated ' + new Date().toLocaleTimeString();
+      } catch (e) {
+        console.error(e);
+        g('last-updated').textContent = 'Error loading data';
+      } finally {
+        btn.textContent = 'Apply';
+        btn.disabled = false;
+        g('loader').classList.add('hidden');
+      }
+      fetch('/api/leads?' + leadsParams).then(r => r.json()).then(renderLeadsTable).catch(() => {
+        g('leads-table-body').innerHTML = '<tr><td colspan="6" class="text-center py-6 text-slate-500">Could not load leads</td></tr>';
+      });
+    }
+
+    function renderSummary(d) {
+      const r = d.raw_counts, m = d.metrics;
+
+      g('kpi-spend').textContent                  = fmt.currency(r.total_spend);
+      g('kpi-leads').textContent                  = fmt.int(r.leads);
+      g('kpi-cpl-sub').textContent               = 'CPL: ' + fmt.currency(m.cost_per_lead);
+      g('kpi-registered').textContent            = fmt.int(r.registered);
+      g('kpi-lead-reg-sub').textContent          = 'Lead→Reg: ' + fmt.pct(m.lead_to_registration_rate_pct);
+      g('kpi-attended').textContent              = fmt.int(r.attended);
+      g('kpi-attend-rate-sub').textContent       = 'Reg→Attend: ' + fmt.pct(m.attendance_rate_pct);
+      g('kpi-consult-booked').textContent        = fmt.int(r.consult_booked);
+      g('kpi-consult-booked-sub').textContent    = 'Attend→Consult: ' + fmt.pct(m.attendee_to_consult_rate_pct);
+      g('kpi-consult-completed').textContent     = fmt.int(r.consult_completed);
+      g('kpi-consult-completed-sub').textContent = 'Booked→Done: ' + fmt.pct(m.pct_consults_occurred);
+      g('kpi-sales').textContent                 = fmt.int(r.closed_won);
+      g('kpi-close-rate-sub').textContent        = 'Close Rate: ' + fmt.pct(m.close_rate_pct);
+
+      g('m-cpl').textContent  = fmt.currency(m.cost_per_lead);
+      g('m-cpr').textContent  = fmt.currency(m.cost_per_registration);
+      g('m-cpa').textContent  = fmt.currency(m.cost_per_attendee);
+      g('m-cpcb').textContent = fmt.currency(m.cost_per_consult_booked);
+      g('m-cpcc').textContent = fmt.currency(m.cost_per_consult_completed);
+      g('m-cps').textContent  = fmt.currency(m.cost_per_sale);
+
+      renderFunnel(r);
+    }
+
+    function renderFunnel(r) {
+      const labels = ['Leads', 'Registered', 'Attended', 'Consult Booked', 'Consult Completed', 'Closed Won'];
+      const values = [r.leads, r.registered, r.attended, r.consult_booked, r.consult_completed, r.closed_won];
+      const colors = ['#3b82f6', '#6366f1', '#8b5cf6', '#a855f7', '#ec4899', '#10b981'];
+
+      if (funnelChart) funnelChart.destroy();
+      funnelChart = new Chart(g('funnel-chart'), {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [{
+            data: values,
+            backgroundColor: colors.map(c => c + '30'),
+            borderColor: colors,
+            borderWidth: 2,
+            borderRadius: 6,
+            borderSkipped: false,
+          }]
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: '#1e293b',
+              borderColor: '#334155',
+              borderWidth: 1,
+              titleColor: '#cbd5e1',
+              bodyColor: '#94a3b8',
+              callbacks: { label: ctx => '  ' + Number(ctx.raw).toLocaleString() + ' people' }
+            }
+          },
+          scales: {
+            x: {
+              grid: { color: '#1e293b' },
+              ticks: { color: '#64748b', font: { size: 11, family: 'Inter' } }
+            },
+            y: {
+              grid: { display: false },
+              ticks: { color: '#94a3b8', font: { size: 12, family: 'Inter' } }
+            }
+          }
+        }
+      });
+    }
+
+    let tableData = [], sortCol = 'event_date', sortDir = -1;
+
+    function renderTable(rows) {
+      tableData = rows;
+      g('table-count').textContent = rows.length + ' seminar' + (rows.length === 1 ? '' : 's');
+      sortAndRender();
+    }
+
+    function sortAndRender() {
+      const sorted = [...tableData].sort((a, b) => {
+        let av = a[sortCol], bv = b[sortCol];
+        if (av == null && bv == null) return 0;
+        if (av == null) return 1;
+        if (bv == null) return -1;
+        return (av < bv ? -1 : av > bv ? 1 : 0) * sortDir;
+      });
+
+      const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+      g('seminar-table-body').innerHTML = sorted.length === 0
+        ? '<tr><td colspan="10" class="text-center px-5 py-10 text-slate-500">No seminars in this date range</td></tr>'
+        : sorted.map(r => `
+          <tr class="border-b border-slate-700/50 hover:bg-slate-700/30 transition-colors">
+            <td class="px-5 py-3.5 font-medium text-white max-w-[200px] truncate">${esc(r.name)}</td>
+            <td class="px-4 py-3.5 text-right text-slate-200">${r.total_spend ? fmt.currency(r.total_spend) : '—'}</td>
+            <td class="px-4 py-3.5 text-right text-slate-200">${fmt.int(r.registered)}</td>
+            <td class="px-4 py-3.5 text-right text-slate-200">${fmt.int(r.attended)}</td>
+            <td class="px-4 py-3.5 text-right text-slate-200">${fmt.int(r.consult_booked)}</td>
+            <td class="px-4 py-3.5 text-right text-slate-200">${fmt.int(r.consult_completed)}</td>
+            <td class="px-4 py-3.5 text-right font-semibold text-emerald-300">${fmt.int(r.closed_won)}</td>
+            <td class="px-4 py-3.5 text-right text-slate-200">${fmt.currency(r.cost_per_attendee)}</td>
+            <td class="px-4 py-3.5 text-right text-slate-200">${fmt.pct(r.close_rate_pct)}</td>
+            <td class="px-5 py-3.5 text-right font-semibold text-blue-300">${fmt.currency(r.cost_per_sale)}</td>
+          </tr>`).join('');
+
+      document.querySelectorAll('th.sortable').forEach(th => {
+        th.classList.remove('sort-asc', 'sort-desc');
+        if (th.dataset.col === sortCol) th.classList.add(sortDir === 1 ? 'sort-asc' : 'sort-desc');
+      });
+    }
+
+    document.querySelectorAll('th.sortable').forEach(th => {
+      th.addEventListener('click', () => {
+        sortDir = (sortCol === th.dataset.col) ? sortDir * -1 : -1;
+        sortCol = th.dataset.col;
+        sortAndRender();
+      });
+    });
+
+    // ── Tab switching ──────────────────────────────────────────────
+    const TABS = ['dashboard', ...(<%= isLoggedIn %> ? ['webhook', 'seminars'] : [])];
+    function switchTab(tab) {
+      TABS.forEach(t => {
+        g('page-' + t)?.classList.toggle('hidden', t !== tab);
+        const btn = g('tab-btn-' + t);
+        if (btn) btn.className = 'text-xs font-semibold px-3.5 py-1.5 rounded-md transition-colors ' +
+          (t === tab ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-white');
+      });
+      if (tab === 'webhook')  initWebhookTab();
+      if (tab === 'seminars') initSeminarsTab();
+    }
+
+    // ── Webhook tab ────────────────────────────────────────────────
+    let webhookTabInit = false;
+
+    function initWebhookTab() {
+      // URL is always the current origin + path
+      g('webhook-url').textContent = window.location.origin + '/webhooks/ghl';
+
+      fetch('/api/webhook/config').then(r => r.json()).then(c => {
+        const el = g('secret-status');
+        if (c.secret_configured) {
+          el.textContent = '✓ Configured';
+          el.className = 'text-xs font-semibold text-emerald-400';
+        } else {
+          el.textContent = '⚠ Not set — add GHL_WEBHOOK_SECRET to .env';
+          el.className = 'text-xs font-semibold text-amber-400';
+        }
+      }).catch(() => {});
+
+      if (!webhookTabInit) {
+        webhookTabInit = true;
+        loadWebhookEvents();
+      }
+    }
+
+    async function loadWebhookEvents() {
+      g('webhook-events-body').innerHTML = '<tr><td colspan="6" class="text-center py-8 text-slate-500">Loading…</td></tr>';
+      try {
+        const events = await fetch('/api/webhook/events').then(r => r.json());
+        renderWebhookEvents(events);
+      } catch (e) {
+        g('webhook-events-body').innerHTML = '<tr><td colspan="6" class="text-center py-8 text-slate-500">Error loading events</td></tr>';
+      }
+    }
+
+    function renderWebhookEvents(events) {
+      const esc = s => String(s ?? '—').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const ts  = d => d ? new Date(d).toLocaleString() : '—';
+
+      if (!events.length) {
+        g('webhook-events-body').innerHTML = '<tr><td colspan="6" class="text-center py-12 text-slate-500">No webhook events received yet</td></tr>';
+        return;
+      }
+
+      g('webhook-events-body').innerHTML = events.map((e, i) => {
+        const badge = e.type === 'mapped'
+          ? '<span class="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-400">Mapped</span>'
+          : '<span class="inline-flex px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-500/20 text-amber-400">Unmapped</span>';
+
+        const contact = e.type === 'mapped'
+          ? `<span class="font-mono text-xs">${esc(e.contact_id)}</span>`
+          : `<span class="font-mono text-xs text-amber-400">${esc(e.pipeline_name)}</span>`;
+
+        const seminar = e.type === 'mapped'
+          ? esc(e.seminar)
+          : '<span class="text-amber-400 text-xs">No seminar match</span>';
+
+        const stage = e.type === 'mapped'
+          ? `<span class="font-mono text-xs text-blue-300">${esc(e.stage_role)}</span>`
+          : '—';
+
+        const eventTime = e.type === 'mapped' ? ts(e.event_timestamp) : '—';
+
+        const viewData = e.payload || { contact_id: e.contact_id, seminar: e.seminar, stage_role: e.stage_role, event_timestamp: e.event_timestamp };
+
+        const payloadToggle = `<button onclick="togglePayload(${i})" class="text-xs text-slate-400 hover:text-blue-400 underline ml-2">view data ↕</button>`;
+
+        const payloadRow = `<tr id="wh-payload-${i}" class="hidden"><td colspan="6" class="px-5 pb-4 pt-1">
+             <pre class="bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-slate-300 overflow-x-auto max-h-60">${esc(JSON.stringify(viewData, null, 2))}</pre>
+           </td></tr>`;
+
+        return `<tr class="border-b border-slate-700/50 hover:bg-slate-700/20 transition-colors">
+          <td class="px-5 py-3">${badge}</td>
+          <td class="px-4 py-3 text-xs text-slate-400">${ts(e.received_at)}</td>
+          <td class="px-4 py-3">${contact}${payloadToggle}</td>
+          <td class="px-4 py-3 text-slate-200">${seminar}</td>
+          <td class="px-4 py-3">${stage}</td>
+          <td class="px-5 py-3 text-xs text-slate-500">${eventTime}</td>
+        </tr>${payloadRow}`;
+      }).join('');
+    }
+
+    function togglePayload(i) {
+      const row = g('wh-payload-' + i);
+      if (row) row.classList.toggle('hidden');
+    }
+
+    // ── Seminars tab ───────────────────────────────────────────────
+    const ROLE_LABELS = [
+      { role: 'registered',        label: 'Registered' },
+      { role: 'attended',          label: 'Attended' },
+      { role: 'consult_booked',    label: 'Consult Booked' },
+      { role: 'consult_completed', label: 'Consult Completed' },
+      { role: 'closed_won',        label: 'Closed Won' },
+      { role: 'closed_lost',       label: 'Closed Lost' },
+    ];
+
+    // Shared stage-mapping row builder (registration + edit)
+    // idToRole: { stageId: role } — pass null for new registration
+    function buildStageRows(stages, prefix, idToRole) {
+      const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      const baseOpts =
+        '<option value="">— ignore —</option>' +
+        ROLE_LABELS.map(({ role, label }) => `<option value="${role}">${label}</option>`).join('') +
+        '<option value="__custom__" class="text-blue-400">✏ Custom…</option>';
+
+      const rows = stages.map((s, i) => {
+        const selId  = `${prefix}-${i}`;
+        const custId = `${prefix}-custom-${i}`;
+        const cur    = idToRole ? (idToRole[s.id] || '') : '';
+        const isCustom = cur && !ROLE_LABELS.find(r => r.role === cur);
+
+        // inject selected attr — custom picks the __custom__ option
+        const targetVal = isCustom ? '__custom__' : cur;
+        const opts = targetVal
+          ? baseOpts.replace(`value="${targetVal}"`, `value="${targetVal}" selected`)
+          : baseOpts;
+
+        const requiredRole = ROLE_LABELS.find(r => r.role === cur);
+        const badge = requiredRole
+          ? `<span class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 shrink-0">${requiredRole.label}</span>`
+          : '';
+
+        return `
+          <div class="flex items-center gap-2.5 rounded-xl px-3 py-2.5 bg-slate-800/70 border border-slate-700/50 hover:border-slate-600/70 transition-colors group">
+            <span class="w-6 h-6 rounded-lg bg-slate-700 text-slate-400 text-[10px] font-bold flex items-center justify-center shrink-0 group-hover:bg-slate-600 transition-colors">${i + 1}</span>
+            <span class="text-sm text-slate-100 font-medium truncate flex-1 min-w-0" title="${esc(s.name)}">${esc(s.name)}</span>
+            ${badge}
+            <select id="${selId}" onchange="onStageRoleChange(this,'${custId}');syncStageRoles('${prefix}',${stages.length})"
+              class="bg-slate-700/80 border border-slate-600/80 hover:border-slate-500 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-blue-500 w-44 shrink-0 transition-colors cursor-pointer">
+              ${opts}
+            </select>
+            <input id="${custId}" type="text" placeholder="e.g. pre_registered" value="${isCustom ? esc(cur) : ''}"
+              class="${isCustom ? '' : 'hidden '}bg-slate-700 border border-blue-500/70 rounded-lg px-2 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 w-32 shrink-0">
+          </div>`;
+      }).join('');
+
+      return `
+        <div class="flex items-center gap-2 px-3 mb-2">
+          <span class="w-6 shrink-0"></span>
+          <span class="text-xs font-medium text-slate-500 flex-1">GHL Stage</span>
+          <span class="text-xs font-medium text-slate-500 w-44 shrink-0 text-center">Funnel Role</span>
+        </div>
+        <div class="space-y-1.5 max-h-80 overflow-y-auto pr-0.5 scrollbar-thin">${rows}</div>`;
+    }
+
+    function onStageRoleChange(sel, custId) {
+      const inp = g(custId);
+      if (!inp) return;
+      if (sel.value === '__custom__') { inp.classList.remove('hidden'); inp.focus(); }
+      else { inp.classList.add('hidden'); inp.value = ''; }
+    }
+
+    function syncStageRoles(prefix, total) {
+      // collect all roles currently picked across rows
+      const picked = new Set();
+      for (let i = 0; i < total; i++) {
+        const v = g(`${prefix}-${i}`)?.value;
+        if (v && v !== '__custom__') picked.add(v);
+      }
+      // disable already-picked options in every other row's select
+      for (let i = 0; i < total; i++) {
+        const sel = g(`${prefix}-${i}`);
+        if (!sel) continue;
+        const own = sel.value;
+        for (const opt of sel.options) {
+          if (!opt.value || opt.value === '__custom__') continue;
+          opt.disabled = picked.has(opt.value) && opt.value !== own;
+          opt.classList.toggle('text-slate-600', opt.disabled);
+        }
+      }
+    }
+
+    let seminarsTabInit = false;
+    function initSeminarsTab() {
+      if (!seminarsTabInit) {
+        seminarsTabInit = true;
+        loadSeminarsList().then(() => loadGHLPipelines());
+        loadMetaCampaigns();
+      }
+    }
+
+    let seminarsList = [];
+
+    async function loadSeminarsList() {
+      const body = g('seminars-list-body');
+      body.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-slate-500">Loading…</td></tr>';
+      try {
+        seminarsList = await fetch('/api/seminars').then(r => r.json());
+        const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        body.innerHTML = seminarsList.length === 0
+          ? '<tr><td colspan="7" class="text-center py-10 text-slate-500">No seminars registered yet</td></tr>'
+          : seminarsList.map(s => {
+            const active = s.active !== false;
+            const budgetCell = s.total_spend == null
+              ? '<span class="text-slate-600 text-xs">—</span>'
+              : s.total_spend === 0
+                ? '<span class="text-slate-500 text-xs font-mono">$0</span>'
+                : `<span class="text-white font-semibold font-mono">$${Number(s.total_spend).toLocaleString('en-US',{maximumFractionDigits:0})}</span>`;
+            return `
+            <tr class="border-b border-slate-700/50 hover:bg-slate-700/20 transition-colors">
+              <td class="px-5 py-3.5 font-medium ${active ? 'text-white' : 'text-slate-500'}">${esc(s.name)}</td>
+              <td class="px-4 py-3.5 text-slate-400">${s.event_date ? s.event_date.slice(0,10) : '—'}</td>
+              <td class="px-4 py-3.5 text-slate-400">${esc(s.location) || '—'}</td>
+              <td class="px-4 py-3.5 text-slate-400 max-w-[200px] truncate">${s.meta_campaign_name ? esc(s.meta_campaign_name) : '<span class="text-slate-600">—</span>'}</td>
+              <td class="px-4 py-3.5">${budgetCell}</td>
+              <td class="px-4 py-3.5 text-center">
+                <button onclick="toggleActive('${s.seminar_id}', ${active})" title="${active ? 'Deactivate' : 'Activate'}"
+                  class="relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${active ? 'bg-emerald-500' : 'bg-slate-600'}">
+                  <span class="inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${active ? 'translate-x-4' : 'translate-x-1'}"></span>
+                </button>
+              </td>
+              <td class="px-5 py-3.5">
+                <button onclick="editSeminar('${s.seminar_id}')"
+                  class="text-xs text-slate-400 hover:text-blue-400 hover:bg-slate-700 px-2.5 py-1.5 rounded-lg transition-colors">
+                  Edit
+                </button>
+              </td>
+            </tr>`;
+          }).join('');
+      } catch (e) {
+        body.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-slate-500">Error loading seminars</td></tr>';
+      } finally {
+        // Re-render campaign dropdowns now that seminarsList is populated,
+        // so already-linked campaigns are correctly greyed out.
+        filterCampaigns(g('campaign-search')?.value || '');
+        editFilterCampaigns(g('edit-campaign-search')?.value || '');
+      }
+    }
+
+    let allCampaigns = [], selectedCampaignId = '', selectedCampaignName = '';
+
+    const STATUS_STYLE = {
+      ACTIVE:      { dot: 'bg-emerald-400', badge: 'text-emerald-400' },
+      PAUSED:      { dot: 'bg-amber-400',   badge: 'text-amber-400'   },
+      ARCHIVED:    { dot: 'bg-slate-500',   badge: 'text-slate-400'   },
+      IN_PROCESS:  { dot: 'bg-blue-400',    badge: 'text-blue-400'    },
+      WITH_ISSUES: { dot: 'bg-red-400',     badge: 'text-red-400'     },
+    };
+
+    async function loadMetaCampaigns() {
+      const status = g('campaign-status');
+      g('campaign-list').innerHTML = '<p class="text-center text-slate-500 text-xs py-4">Loading…</p>';
+      status.textContent = '';
+      status.className = 'text-xs text-slate-500 mt-0.5';
+      try {
+        const res  = await fetch('/api/meta/campaigns');
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed');
+        allCampaigns = data.sort((a, b) => {
+          const order = { ACTIVE: 0, IN_PROCESS: 1, WITH_ISSUES: 2, PAUSED: 3, ARCHIVED: 4 };
+          return (order[a.effective_status] ?? 5) - (order[b.effective_status] ?? 5);
+        });
+        filterCampaigns('');
+        status.textContent = allCampaigns.length + ' campaigns loaded';
+      } catch (e) {
+        g('campaign-list').innerHTML = '<p class="text-center text-amber-400 text-xs py-4">' + e.message + '</p>';
+        status.textContent = 'Failed to load campaigns';
+        status.className = 'text-xs text-amber-400 mt-0.5';
+      }
+    }
+
+    function filterCampaigns(query) {
+      const q = (query || g('campaign-search')?.value || '').toLowerCase();
+      const filtered = q ? allCampaigns.filter(c => c.name.toLowerCase().includes(q)) : allCampaigns;
+      const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+      const clearItem = `
+        <button type="button" onclick="selectCampaign('','')"
+          class="w-full text-left px-3 py-2.5 text-sm text-slate-400 hover:bg-slate-700/60 transition-colors flex items-center gap-2.5 border-b border-slate-700/50">
+          <span class="w-2 h-2 rounded-full bg-slate-600 shrink-0"></span>
+          — no campaign (optional) —
+        </button>`;
+
+      const usedCampaignIds = new Set(seminarsList.map(s => s.meta_campaign_id).filter(Boolean));
+      const items = filtered.map(c => {
+        const st = STATUS_STYLE[c.effective_status] || STATUS_STYLE.PAUSED;
+        const isSelected = c.id === selectedCampaignId;
+        const isUsed = usedCampaignIds.has(c.id) && c.id !== selectedCampaignId;
+        if (isUsed) return `
+          <div class="w-full px-3 py-2 text-sm flex items-center gap-2.5 bg-slate-900/40 cursor-not-allowed select-none">
+            <span class="w-2 h-2 rounded-full bg-slate-600 shrink-0"></span>
+            <span class="flex-1 truncate text-slate-600 line-through">${esc(c.name)}</span>
+            <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-700 text-slate-500 shrink-0">linked</span>
+          </div>`;
+        return `<button type="button" onclick="selectCampaign('${esc(c.id)}', '${esc(c.name).replace(/'/g, '&#39;')}')"
+          class="w-full text-left px-3 py-2.5 text-sm hover:bg-slate-700/60 transition-colors flex items-center gap-2.5 ${isSelected ? 'bg-blue-600/20' : ''}">
+          <span class="w-2 h-2 rounded-full ${st.dot} shrink-0"></span>
+          <span class="flex-1 truncate text-slate-200">${esc(c.name)}</span>
+          <span class="text-xs ${st.badge} shrink-0">${c.effective_status}</span>
+        </button>`;
+      }).join('');
+
+      g('campaign-list').innerHTML = clearItem + (items || '<p class="text-center text-slate-500 text-xs py-3">No matches</p>');
+    }
+
+    function selectCampaign(id, name) {
+      selectedCampaignId   = id;
+      selectedCampaignName = name;
+      const label = g('campaign-trigger-label');
+      if (id) {
+        label.textContent = name;
+        label.classList.replace('text-slate-400', 'text-white');
+      } else {
+        label.textContent = '— no campaign (optional) —';
+        label.classList.replace('text-white', 'text-slate-400');
+      }
+      g('campaign-dropdown-panel').classList.add('hidden');
+      g('campaign-chevron').style.transform = '';
+      filterCampaigns('');
+      if (g('campaign-search')) g('campaign-search').value = '';
+    }
+
+    function toggleCampaignDropdown() {
+      const panel = g('campaign-dropdown-panel');
+      const isOpen = !panel.classList.contains('hidden');
+      panel.classList.toggle('hidden', isOpen);
+      g('campaign-chevron').style.transform = isOpen ? '' : 'rotate(180deg)';
+      if (!isOpen) setTimeout(() => g('campaign-search')?.focus(), 50);
+    }
+
+    document.addEventListener('click', e => {
+      if (g('pipeline-dropdown-wrapper') && !g('pipeline-dropdown-wrapper').contains(e.target)) {
+        g('pipeline-dropdown-panel')?.classList.add('hidden');
+        if (g('pipeline-chevron')) g('pipeline-chevron').style.transform = '';
+      }
+      if (g('campaign-dropdown-wrapper') && !g('campaign-dropdown-wrapper').contains(e.target)) {
+        g('campaign-dropdown-panel')?.classList.add('hidden');
+        if (g('campaign-chevron')) g('campaign-chevron').style.transform = '';
+      }
+    });
+
+    let fetchedStages = [];
+    let allPipelines = [], selectedPipelineId = '', selectedPipelineName = '';
+
+    async function loadGHLPipelines() {
+      const trig   = g('pipeline-trigger');
+      const status = g('pipeline-status');
+      g('pipeline-trigger-label').textContent = 'Loading pipelines…';
+      trig.disabled = true;
+      status.textContent = '';
+      try {
+        const res  = await fetch('/api/ghl/pipelines');
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed');
+        allPipelines = data;
+        trig.disabled = false;
+        g('pipeline-trigger-label').textContent = '— select a pipeline —';
+        g('pipeline-trigger-label').classList.add('text-slate-400');
+        filterPipelines('');
+        status.textContent = data.length + ' pipelines loaded';
+      } catch (e) {
+        g('pipeline-trigger-label').textContent = 'Failed to load pipelines';
+        status.textContent = e.message;
+      }
+    }
+
+    function filterPipelines(query) {
+      const q = (query || '').toLowerCase();
+      const usedIds = new Set(seminarsList.map(s => s.ghl_pipeline_id).filter(Boolean));
+      const filtered = q ? allPipelines.filter(p => p.name.toLowerCase().includes(q)) : allPipelines;
+      const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      const items = filtered.map(p => {
+        const used = usedIds.has(p.id);
+        const sel  = p.id === selectedPipelineId;
+        if (used) return `
+          <div class="w-full px-3 py-2 text-sm flex items-center gap-2.5 bg-slate-900/40 cursor-not-allowed select-none">
+            <span class="w-2 h-2 rounded-full bg-slate-600 shrink-0"></span>
+            <span class="flex-1 truncate text-slate-600 line-through">${esc(p.name)}</span>
+            <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-700 text-slate-500 shrink-0">registered</span>
+          </div>`;
+        return `<button type="button" onclick="selectPipeline('${p.id.replace(/'/g,"&#39;")}','${esc(p.name).replace(/'/g,"&#39;")}')"
+          class="w-full text-left px-3 py-2.5 text-sm hover:bg-slate-700/60 transition-colors flex items-center gap-2.5 ${sel ? 'bg-blue-600/20' : ''}">
+          <span class="w-2 h-2 rounded-full ${sel ? 'bg-blue-400' : 'bg-slate-500'} shrink-0"></span>
+          <span class="flex-1 truncate text-slate-200">${esc(p.name)}</span>
+        </button>`;
+      }).join('');
+      g('pipeline-list').innerHTML = items || '<p class="text-center text-slate-500 text-xs py-3">No matches</p>';
+    }
+
+    function selectPipeline(id, name) {
+      selectedPipelineId   = id;
+      selectedPipelineName = name;
+      const label = g('pipeline-trigger-label');
+      label.textContent = name;
+      label.classList.replace('text-slate-400', 'text-white');
+      g('pipeline-dropdown-panel').classList.add('hidden');
+      g('pipeline-chevron').style.transform = '';
+      filterPipelines(g('pipeline-search')?.value || '');
+    }
+
+    function togglePipelineDropdown() {
+      const panel  = g('pipeline-dropdown-panel');
+      const isOpen = !panel.classList.contains('hidden');
+      panel.classList.toggle('hidden', isOpen);
+      g('pipeline-chevron').style.transform = isOpen ? '' : 'rotate(180deg)';
+      if (!isOpen) setTimeout(() => g('pipeline-search')?.focus(), 50);
+    }
+
+    function lockRegistrationSelects() {
+      const ptrig = g('pipeline-trigger');
+      ptrig.disabled = true;
+      ptrig.classList.add('opacity-50', 'pointer-events-none');
+      const ctrig = g('campaign-trigger');
+      ctrig.disabled = true;
+      ctrig.classList.add('opacity-50', 'pointer-events-none');
+      g('reg-reset-btn').classList.remove('hidden');
+    }
+
+    function resetRegistrationFlow() {
+      fetchedStages = []; selectedPipelineId = ''; selectedPipelineName = '';
+      g('stage-mapping').classList.add('hidden');
+      g('stage-dropdowns').innerHTML = '';
+      g('register-result').classList.add('hidden');
+      g('reg-reset-btn').classList.add('hidden');
+      const ptrig = g('pipeline-trigger');
+      ptrig.disabled = false;
+      ptrig.classList.remove('opacity-50', 'pointer-events-none');
+      g('pipeline-trigger-label').textContent = '— select a pipeline —';
+      g('pipeline-trigger-label').className = 'truncate text-slate-400';
+      const ctrig = g('campaign-trigger');
+      ctrig.disabled = false;
+      ctrig.classList.remove('opacity-50', 'pointer-events-none');
+      selectCampaign('', '');
+      loadGHLPipelines();
+    }
+
+    async function fetchGHLStages() {
+      if (!selectedPipelineId) { alert('Select a pipeline first.'); return; }
+      const pipelineId = selectedPipelineId;
+
+      const btn = g('fetch-stages-btn');
+      btn.textContent = 'Fetching stages…'; btn.disabled = true;
+      g('stage-mapping').classList.add('hidden');
+
+      try {
+        const res  = await fetch(`/api/seminars/stages?pipeline_id=${encodeURIComponent(pipelineId)}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'GHL request failed');
+        if (!data.length) throw new Error('No stages returned — check the pipeline ID');
+
+        fetchedStages = data;
+        g('stage-dropdowns').innerHTML = buildStageRows(data, 'stage-role', null);
+        syncStageRoles('stage-role', data.length);
+        g('stage-mapping').classList.remove('hidden');
+        lockRegistrationSelects();
+      } catch (e) {
+        alert('Failed to fetch stages: ' + e.message);
+      } finally {
+        btn.textContent = 'Fetch & Map Stages →'; btn.disabled = false;
+      }
+    }
+
+    async function registerSeminar() {
+      const stageNameToRole = {};
+      for (let i = 0; i < fetchedStages.length; i++) {
+        let role = g('stage-role-' + i)?.value;
+        if (role === '__custom__') role = (g('stage-role-custom-' + i)?.value || '').trim();
+        if (role) stageNameToRole[fetchedStages[i].name] = role;
+      }
+      const meta_campaign_id   = selectedCampaignId   || undefined;
+      const meta_campaign_name = selectedCampaignName || undefined;
+
+      if (!selectedPipelineId) { alert('Select a pipeline first.'); return; }
+
+      const payload = {
+        name:               selectedPipelineName,
+        ghl_pipeline_id:    selectedPipelineId,
+        meta_campaign_id,
+        meta_campaign_name,
+        stage_name_to_role: stageNameToRole,
+      };
+
+      const btn = g('register-btn');
+      btn.textContent = 'Registering…';
+      btn.disabled = true;
+
+      try {
+        const res  = await fetch('/api/seminars', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        const data = await res.json();
+        if (!res.ok) throw data;
+
+        showRegisterResult('success', `"${data.name}" registered successfully!`);
+        await loadSeminarsList();
+        resetRegistrationFlow();
+      } catch (e) {
+        const msg = e.error || (e.missing_roles ? 'Missing stages: ' + e.missing_roles.join(', ') : 'Registration failed');
+        showRegisterResult('error', msg);
+      } finally {
+        btn.textContent = 'Register Seminar';
+        btn.disabled = false;
+      }
+    }
+
+    function showRegisterResult(type, msg) {
+      const el = g('register-result');
+      el.className = 'mt-1 p-3 rounded-lg text-sm ' + (type === 'success'
+        ? 'bg-emerald-500/20 border border-emerald-700/50 text-emerald-300'
+        : 'bg-red-500/20 border border-red-700/50 text-red-300');
+      el.textContent = msg;
+      el.classList.remove('hidden');
+      if (type === 'success') setTimeout(() => el.classList.add('hidden'), 5000);
+    }
+
+    // ── Seminar edit ───────────────────────────────────────────────
+    let editingId = null, editCampaignId = '', editCampaignName = '';
+    let editPipelineId = '', editCurrentStageRoleMap = {}, editFetchedStages = [];
+
+    function editSeminar(id) {
+      const s = seminarsList.find(x => x.seminar_id === id);
+      if (!s) return;
+      editingId            = id;
+      editPipelineId       = s.ghl_pipeline_id || '';
+      editCurrentStageRoleMap = s.stage_role_map || {};
+      editFetchedStages    = [];
+
+      g('edit-name').value     = s.name || '';
+      g('edit-date').value     = s.event_date ? s.event_date.slice(0,10) : '';
+      g('edit-location').value = s.location || '';
+      g('edit-pipeline-display').textContent = s.ghl_pipeline_id || '—';
+      g('edit-stage-section').classList.add('hidden');
+      editSetCampaign(s.meta_campaign_id || '', s.meta_campaign_name || '');
+      g('edit-result').classList.add('hidden');
+      g('edit-panel').classList.remove('hidden');
+      g('edit-panel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    async function editFetchStages() {
+      if (!editPipelineId) { alert('No pipeline ID on this seminar.'); return; }
+      const btn = g('edit-fetch-stages-btn');
+      btn.textContent = 'Fetching…'; btn.disabled = true;
+      try {
+        const res    = await fetch('/api/seminars/stages?pipeline_id=' + encodeURIComponent(editPipelineId));
+        const stages = await res.json();
+        if (!res.ok) throw new Error(stages.error || 'Failed');
+        editFetchedStages = stages;
+        renderEditStageDropdowns(stages);
+        g('edit-stage-section').classList.remove('hidden');
+      } catch (e) {
+        alert('Failed to fetch stages: ' + e.message);
+      } finally {
+        btn.textContent = 'Re-map Stages →'; btn.disabled = false;
+      }
+    }
+
+    function renderEditStageDropdowns(stages) {
+      const idToRole = Object.fromEntries(
+        Object.entries(editCurrentStageRoleMap).map(([role, stageId]) => [stageId, role])
+      );
+      g('edit-stage-dropdowns').innerHTML = buildStageRows(stages, 'edit-stage-role', idToRole);
+      syncStageRoles('edit-stage-role', stages.length);
+    }
+
+    function closeEditPanel() {
+      g('edit-panel').classList.add('hidden');
+      editingId = null;
+    }
+
+    async function saveEditedSeminar() {
+      if (!editingId) return;
+      const name = g('edit-name').value.trim();
+      if (!name) { alert('Seminar name is required.'); return; }
+
+      const btn = g('edit-save-btn');
+      btn.textContent = 'Saving…';
+      btn.disabled = true;
+
+      // Collect stage mappings if the remap section is open
+      let stage_role_map;
+      if (!g('edit-stage-section').classList.contains('hidden') && editFetchedStages.length) {
+        stage_role_map = {};
+        for (let i = 0; i < editFetchedStages.length; i++) {
+          let role = g('edit-stage-role-' + i)?.value;
+          if (role === '__custom__') role = (g('edit-stage-role-custom-' + i)?.value || '').trim();
+          if (role) stage_role_map[role] = editFetchedStages[i].id;
+        }
+      }
+
+      try {
+        const res  = await fetch('/api/seminars/' + editingId, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name,
+            event_date:         g('edit-date').value     || undefined,
+            location:           g('edit-location').value || undefined,
+            meta_campaign_id:   editCampaignId           || undefined,
+            meta_campaign_name: editCampaignName         || undefined,
+            stage_role_map,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed');
+        showEditResult('success', 'Saved successfully.');
+        loadSeminarsList();
+      } catch (e) {
+        showEditResult('error', e.message);
+      } finally {
+        btn.textContent = 'Save Changes';
+        btn.disabled = false;
+      }
+    }
+
+    async function toggleActive(id, currentlyActive) {
+      try {
+        const res = await fetch('/api/seminars/' + id, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ active: !currentlyActive }),
+        });
+        if (!res.ok) throw new Error();
+        loadSeminarsList();
+      } catch {
+        alert('Failed to update status.');
+      }
+    }
+
+    function showEditResult(type, msg) {
+      const el = g('edit-result');
+      el.className = 'p-3 rounded-lg text-sm ' + (type === 'success'
+        ? 'bg-emerald-500/20 border border-emerald-700/50 text-emerald-300'
+        : 'bg-red-500/20 border border-red-700/50 text-red-300');
+      el.textContent = msg;
+      el.classList.remove('hidden');
+      if (type === 'success') setTimeout(() => el.classList.add('hidden'), 3000);
+    }
+
+    // Edit-panel campaign picker (reuses allCampaigns + STATUS_STYLE from registration scope)
+    function editSetCampaign(id, name) {
+      editCampaignId   = id;
+      editCampaignName = name;
+      const label = g('edit-campaign-label');
+      if (id && name) {
+        label.textContent = name;
+        label.classList.replace('text-slate-400', 'text-white');
+      } else {
+        label.textContent = '— none —';
+        if (label.classList.contains('text-white')) label.classList.replace('text-white', 'text-slate-400');
+      }
+      g('edit-campaign-panel').classList.add('hidden');
+      g('edit-campaign-chevron').style.transform = '';
+      if (g('edit-campaign-search')) g('edit-campaign-search').value = '';
+    }
+
+    function editFilterCampaigns(query) {
+      const q = (query || '').toLowerCase();
+      const filtered = q ? allCampaigns.filter(c => c.name.toLowerCase().includes(q)) : allCampaigns;
+      const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+      const clear = `<button type="button" onclick="editSetCampaign('','')"
+        class="w-full text-left px-3 py-2.5 text-sm text-slate-400 hover:bg-slate-700/60 flex items-center gap-2.5 border-b border-slate-700/50">
+        <span class="w-2 h-2 rounded-full bg-slate-600 shrink-0"></span>— none —</button>`;
+
+      const usedIds = new Set(seminarsList.filter(s => s.seminar_id !== editingId).map(s => s.meta_campaign_id).filter(Boolean));
+      const items = filtered.map(c => {
+        const st   = STATUS_STYLE[c.effective_status] || STATUS_STYLE.PAUSED;
+        const isUsed = usedIds.has(c.id);
+        if (isUsed) return `
+          <div class="w-full px-3 py-2 text-sm flex items-center gap-2.5 bg-slate-900/40 cursor-not-allowed select-none">
+            <span class="w-2 h-2 rounded-full bg-slate-600 shrink-0"></span>
+            <span class="flex-1 truncate text-slate-600 line-through">${esc(c.name)}</span>
+            <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-700 text-slate-500 shrink-0">linked</span>
+          </div>`;
+        return `<button type="button" onclick="editSetCampaign('${esc(c.id)}','${esc(c.name).replace(/'/g,"&#39;")}')"
+          class="w-full text-left px-3 py-2.5 text-sm hover:bg-slate-700/60 flex items-center gap-2.5 ${c.id===editCampaignId?'bg-blue-600/20':''}">
+          <span class="w-2 h-2 rounded-full ${st.dot} shrink-0"></span>
+          <span class="flex-1 truncate text-slate-200">${esc(c.name)}</span>
+          <span class="text-xs ${st.badge} shrink-0">${c.effective_status}</span>
+        </button>`;
+      }).join('');
+
+      g('edit-campaign-list').innerHTML = clear + (items || '<p class="text-center text-slate-500 text-xs py-3">No matches</p>');
+    }
+
+    function editToggleCampaignDropdown() {
+      const panel = g('edit-campaign-panel');
+      const isOpen = !panel.classList.contains('hidden');
+      panel.classList.toggle('hidden', isOpen);
+      g('edit-campaign-chevron').style.transform = isOpen ? '' : 'rotate(180deg)';
+      if (!isOpen) { editFilterCampaigns(''); setTimeout(() => g('edit-campaign-search')?.focus(), 50); }
+    }
+
+    document.addEventListener('click', e => {
+      if (g('edit-campaign-wrapper') && !g('edit-campaign-wrapper').contains(e.target)) {
+        g('edit-campaign-panel')?.classList.add('hidden');
+        if (g('edit-campaign-chevron')) g('edit-campaign-chevron').style.transform = '';
+      }
+    });
+
+    // ── Leads table (rendered as part of loadDashboard) ────────────
+    function renderLeadsTable(leads) {
+      const esc = s => String(s ?? '—').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const ts  = d => d ? new Date(d).toLocaleString() : '—';
+      g('leads-count-badge').textContent = leads.length ? leads.length + ' leads' : '';
+      if (!leads.length) {
+        g('leads-table-body').innerHTML = '<tr><td colspan="6" class="text-center py-10 text-slate-500">No leads in this range</td></tr>';
+        return;
+      }
+      g('leads-table-body').innerHTML = leads.map(l => `
+        <tr class="border-b border-slate-700/50 hover:bg-slate-700/20 transition-colors">
+          <td class="px-5 py-3 text-slate-200 font-medium">${esc(l.name)}</td>
+          <td class="px-4 py-3 text-slate-400">${esc(l.email)}</td>
+          <td class="px-4 py-3 text-slate-400">${esc(l.phone)}</td>
+          <td class="px-4 py-3"><span class="font-mono text-xs text-blue-300">${esc(l.current_stage_role || l.current_stage_name)}</span></td>
+          <td class="px-4 py-3 text-slate-400 text-xs">${esc(l.seminar_id?.name)}</td>
+          <td class="px-4 py-3 text-slate-500 text-xs">${ts(l.created_at)}</td>
+        </tr>`).join('');
+    }
+
+    function copyWebhookUrl() {
+      navigator.clipboard.writeText(g('webhook-url').textContent);
+      const btn = g('copy-url-btn');
+      btn.textContent = 'Copied!';
+      btn.classList.add('bg-emerald-700');
+      setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('bg-emerald-700'); }, 2000);
+    }
+  </script>
+
+</body>
+</html>

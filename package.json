@@ -1,0 +1,28 @@
+{
+  "name": "seminar-dashboard-backend",
+  "version": "1.0.0",
+  "description": "Backend for dinner seminar performance dashboard: GHL webhook ingestion, Meta ad spend sync, filtered dashboard API",
+  "main": "src/server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "tunnel": "node src/tunnel.js",
+    "migrate": "node db/migrate.js"
+  },
+  "dependencies": {
+    "axios": "^1.7.7",
+    "bcryptjs": "^3.0.3",
+    "crypto": "^1.0.1",
+    "dotenv": "^16.4.5",
+    "ejs": "^6.0.1",
+    "express": "^4.19.2",
+    "express-session": "^1.19.0",
+    "mongoose": "^9.9.4",
+    "node-cron": "^3.0.3",
+    "nodemailer": "^9.0.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4"
+  }
+}

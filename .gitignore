@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Environment — never commit real credentials
+.env
+
+# Data files
+data.json
+
+# Stale Postgres migration artifacts (app uses MongoDB)
+db/
+
+# Outdated README
+README.md
+
+# Claude Code local settings (personal IDE config)
+.claude/
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
