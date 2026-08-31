@@ -101,7 +101,10 @@ router.post('/api/seminars', async (req, res) => {
     const stageRoleMap = {};
     for (const stage of stages) {
       const role = stage_name_to_role[stage.name];
-      if (role) stageRoleMap[role] = stage.name;
+      if (role) {
+        if (!stageRoleMap[role]) stageRoleMap[role] = [];
+        stageRoleMap[role].push(stage.name);
+      }
     }
 
     const seminar = await Seminar.findOneAndUpdate(
@@ -136,7 +139,11 @@ router.put('/api/seminars/:id', async (req, res) => {
     if (location    !== undefined) update.location           = location;
     if (meta_campaign_id   !== undefined) update.meta_campaign_id   = meta_campaign_id   || null;
     if (meta_campaign_name !== undefined) update.meta_campaign_name = meta_campaign_name || null;
-    if (stage_role_map     !== undefined) update.stage_role_map     = stage_role_map;
+    if (stage_role_map !== undefined) {
+      if (typeof stage_role_map !== 'object' || Array.isArray(stage_role_map) || stage_role_map === null)
+        return res.status(400).json({ error: 'stage_role_map must be a plain object' });
+      update.stage_role_map = stage_role_map;
+    }
 
     const seminar = await Seminar.findByIdAndUpdate(
       req.params.id,

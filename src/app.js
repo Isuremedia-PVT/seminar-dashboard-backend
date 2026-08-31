@@ -16,6 +16,8 @@ app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+if (!process.env.SESSION_SECRET) console.warn('SESSION_SECRET not set — using insecure default, set it in .env');
+
 app.use(session({
   secret:            process.env.SESSION_SECRET || 'change-me-in-production',
   resave:            false,
@@ -44,8 +46,8 @@ app.use(authRouter);
 // Webhook ingestion (public — called by GHL, not users)
 app.use(ghlWebhookRouter);
 
-// Public dashboard APIs
-app.use(dashboardRouter);
+// Dashboard APIs (protected)
+app.use(requireAuth, dashboardRouter);
 
 // Protected: webhook management info
 app.use(requireAuth, webhookInfoRouter);

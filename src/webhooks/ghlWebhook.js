@@ -16,8 +16,9 @@ function verifyWebhook(req) {
 }
 
 function resolveStageRole(stageRoleMap, stageName) {
-  for (const [role, mappedStageName] of Object.entries(stageRoleMap || {})) {
-    if (mappedStageName === stageName) return role;
+  for (const [role, val] of Object.entries(stageRoleMap || {})) {
+    const names = Array.isArray(val) ? val : [val];
+    if (names.includes(stageName)) return role;
   }
   return null;
 }

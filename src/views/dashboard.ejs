@@ -504,8 +504,10 @@
             Re-map Stages →
           </button>
         </div>
+        <!-- Current saved mapping summary — populated by editSeminar() -->
+        <div id="edit-mapping-summary" class="hidden flex flex-wrap gap-1.5"></div>
         <div id="edit-stage-section" class="hidden space-y-3">
-          <p class="text-xs text-slate-500">Pre-filled from current mapping. Use <span class="text-blue-400 font-medium">Custom…</span> to enter a non-standard role name.</p>
+          <p class="text-xs text-slate-500" id="edit-stage-hint">Pre-filled from current mapping. Use <span class="text-blue-400 font-medium">Custom…</span> to enter a non-standard role name.</p>
           <div id="edit-stage-dropdowns"></div>
         </div>
       </div>
@@ -943,7 +945,7 @@
       const rows = stages.map((s, i) => {
         const selId  = `${prefix}-${i}`;
         const custId = `${prefix}-custom-${i}`;
-        const cur    = idToRole ? (idToRole[s.id] || '') : '';
+        const cur    = idToRole ? (idToRole[s.name] || '') : '';
         const isCustom = cur && !ROLE_LABELS.find(r => r.role === cur);
 
         // inject selected attr — custom picks the __custom__ option
@@ -987,25 +989,7 @@
       else { inp.classList.add('hidden'); inp.value = ''; }
     }
 
-    function syncStageRoles(prefix, total) {
-      // collect all roles currently picked across rows
-      const picked = new Set();
-      for (let i = 0; i < total; i++) {
-        const v = g(`${prefix}-${i}`)?.value;
-        if (v && v !== '__custom__') picked.add(v);
-      }
-      // disable already-picked options in every other row's select
-      for (let i = 0; i < total; i++) {
-        const sel = g(`${prefix}-${i}`);
-        if (!sel) continue;
-        const own = sel.value;
-        for (const opt of sel.options) {
-          if (!opt.value || opt.value === '__custom__') continue;
-          opt.disabled = picked.has(opt.value) && opt.value !== own;
-          opt.classList.toggle('text-slate-600', opt.disabled);
-        }
-      }
-    }
+    function syncStageRoles(prefix, total) {}
 
     let seminarsTabInit = false;
     function initSeminarsTab() {
@@ -1355,6 +1339,21 @@
       g('edit-location').value = s.location || '';
       g('edit-pipeline-display').textContent = s.ghl_pipeline_id || '—';
       g('edit-stage-section').classList.add('hidden');
+
+      // Show saved role badges so user can see current mapping without clicking Re-map
+      const mapSummary = g('edit-mapping-summary');
+      const savedMap = s.stage_role_map || {};
+      const savedRoles = Object.keys(savedMap);
+      if (savedRoles.length) {
+        mapSummary.innerHTML = savedRoles.map(role => {
+          const lbl = ROLE_LABELS.find(r => r.role === role)?.label || role;
+          return `<span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-700 text-slate-300 border border-slate-600">${lbl}</span>`;
+        }).join('');
+        mapSummary.classList.remove('hidden');
+      } else {
+        mapSummary.classList.add('hidden');
+      }
+
       editSetCampaign(s.meta_campaign_id || '', s.meta_campaign_name || '');
       g('edit-result').classList.add('hidden');
       g('edit-panel').classList.remove('hidden');
@@ -1380,11 +1379,23 @@
     }
 
     function renderEditStageDropdowns(stages) {
-      const idToRole = Object.fromEntries(
-        Object.entries(editCurrentStageRoleMap).map(([role, stageId]) => [stageId, role])
-      );
-      g('edit-stage-dropdowns').innerHTML = buildStageRows(stages, 'edit-stage-role', idToRole);
+      // stage_role_map values may be a string (legacy) or array (current)
+      const nameToRole = {};
+      for (const [role, val] of Object.entries(editCurrentStageRoleMap)) {
+        const names = Array.isArray(val) ? val : [val];
+        for (const n of names) nameToRole[n] = role;
+      }
+      g('edit-stage-dropdowns').innerHTML = buildStageRows(stages, 'edit-stage-role', nameToRole);
       syncStageRoles('edit-stage-role', stages.length);
+
+      const hasSaved  = Object.keys(editCurrentStageRoleMap).length > 0;
+      const prefilled = stages.some(s => nameToRole[s.name]);
+      const hint = g('edit-stage-hint');
+      if (hasSaved && !prefilled) {
+        hint.innerHTML = '<span class="text-amber-400 font-medium">⚠ Previous mapping couldn\'t be loaded — re-assign roles manually.</span>';
+      } else {
+        hint.innerHTML = 'Pre-filled from current mapping. Use <span class="text-blue-400 font-medium">Custom…</span> to enter a non-standard role name.';
+      }
     }
 
     function closeEditPanel() {
@@ -1408,7 +1419,10 @@
         for (let i = 0; i < editFetchedStages.length; i++) {
           let role = g('edit-stage-role-' + i)?.value;
           if (role === '__custom__') role = (g('edit-stage-role-custom-' + i)?.value || '').trim();
-          if (role) stage_role_map[role] = editFetchedStages[i].id;
+          if (role) {
+            if (!stage_role_map[role]) stage_role_map[role] = [];
+            stage_role_map[role].push(editFetchedStages[i].name);
+          }
         }
       }
 
