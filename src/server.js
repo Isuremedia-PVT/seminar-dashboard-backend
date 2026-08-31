@@ -6,9 +6,11 @@ const { syncDailySpend } = require('./meta/spendSync');
 
 const PORT = process.env.PORT || 3000;
 
-app.listen(PORT, () => {
-  console.log(`Seminar dashboard backend listening on port ${PORT}`);
-});
+if (require.main === module) {
+  app.listen(PORT, () => console.log(`Seminar dashboard backend listening on port ${PORT}`));
+}
+
+module.exports = app;
 
 // Ensure Meta token is ready on startup
 (async () => {
