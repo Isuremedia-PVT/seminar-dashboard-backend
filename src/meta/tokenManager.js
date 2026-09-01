@@ -30,7 +30,13 @@ async function bootstrapLongLivedToken() {
 
 async function getCurrentToken() {
   const token = await MetaToken.findOne({ _id: 1 }).lean();
-  if (!token) throw new Error('No Meta token stored yet — set META_INITIAL_ACCESS_TOKEN and restart');
+  if (!token) {
+    if (process.env.META_INITIAL_ACCESS_TOKEN) {
+      const access_token = await bootstrapLongLivedToken();
+      return { access_token };
+    }
+    throw new Error('No Meta token stored yet — set META_INITIAL_ACCESS_TOKEN in env');
+  }
   if (new Date(token.expires_at) <= new Date()) {
     await sendAlert('Meta access token has expired — set META_INITIAL_ACCESS_TOKEN and restart to re-bootstrap', {
       expired_at: token.expires_at,
