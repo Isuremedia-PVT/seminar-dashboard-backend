@@ -37,7 +37,7 @@ async function seedAdmin() {
 }
 seedAdmin().catch(err => console.error('Admin seed failed:', err));
 
-app.get('/', requireAuth, (_req, res) => res.render('dashboard', { isLoggedIn: true }));
+app.get('/', (req, res) => res.render('dashboard', { isLoggedIn: !!req.session.user }));
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 
 // Auth routes (public)
@@ -46,8 +46,8 @@ app.use(authRouter);
 // Webhook ingestion (public — called by GHL, not users)
 app.use(ghlWebhookRouter);
 
-// Dashboard APIs (protected)
-app.use(requireAuth, dashboardRouter);
+// Dashboard APIs (public)
+app.use(dashboardRouter);
 
 // Protected: webhook management info
 app.use(requireAuth, webhookInfoRouter);
