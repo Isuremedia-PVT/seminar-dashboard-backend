@@ -37,8 +37,8 @@ async function seedAdmin() {
 }
 seedAdmin().catch(err => console.error('Admin seed failed:', err));
 
-app.get('/',      (req, res) => res.render('dashboard', { isLoggedIn: !!req.session.user }));
-app.get('/health', (req, res) => res.json({ status: 'ok' }));
+app.get('/', requireAuth, (_req, res) => res.render('dashboard', { isLoggedIn: true }));
+app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 
 // Auth routes (public)
 app.use(authRouter);
